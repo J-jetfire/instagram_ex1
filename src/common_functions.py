@@ -27,29 +27,29 @@ BACKEND_URL = 'redis://redis:6379/3'
 celery = Celery('instagram', broker=BROKER_URL, backend=BACKEND_URL)
 
 
-def is_user_private(username: str) -> bool:
-    data = get_user_profile_info_by_username(username)
+async def is_user_private(username: str) -> bool:
+    data = await get_user_profile_info_by_username(username)
     return data.get('is_private', True)
 
 
-def check_and_raise_if_private(username: str):
-    if is_user_private(username):
+async def check_and_raise_if_private(username: str):
+    if await is_user_private(username):
         raise ProfileIsPrivateException(detail="The profile is private")
 
 
-def user_data_main(username: str) -> dict:
-    user_profile = get_user_profile_info_by_username(username)
+async def user_data_main(username: str) -> dict:
+    user_profile = await get_user_profile_info_by_username(username)
 
     if not user_profile.get('user_id'):
         error_logger.error("Parameter 'user_id' is null. common_functions.py. 34 row.")
         return {}
 
     url = f"https://api.com/usercontact/{user_profile.get('user_id')}"
-    response = api_call(url)
+    response = await api_call(url)
 
-    json_data = safe_json(response)
+    json_data = await safe_json(response)
 
-    if response.status_code != 200 or not json_data:
+    if response.status != 200 or not json_data:
         return {}
 
     data = json_data.get('data', {}).get('user', {})
@@ -66,13 +66,13 @@ def user_data_main(username: str) -> dict:
     }
 
 
-def get_user_profile_info_by_username(username: str) -> dict:
+async def get_user_profile_info_by_username(username: str) -> dict:
     url = f"https://api.com/userinfo/{username}"
-    response = api_call(url)
+    response = await api_call(url)
 
-    json_data = safe_json(response)
+    json_data = await safe_json(response)
 
-    if response.status_code != 200 or not json_data:
+    if response.status != 200 or not json_data:
         return {}
 
     data = json_data.get('data', {})
@@ -80,7 +80,7 @@ def get_user_profile_info_by_username(username: str) -> dict:
     is_private = data.get('is_private', True)
 
     if not user_id:
-        return ''
+        return {}
 
     return {
         'user_id': user_id,
@@ -126,8 +126,22 @@ async def api_call(url):
 
 
 async def safe_json(response):
+    """
+    Decode JSON from response safely.
+
+    Args:
+        response: The response object.
+
+    Returns:
+        Parsed JSON data or an empty dictionary in case of failure.
+    """
     try:
-        return await response.json()
-    except Exception as e:
-        error_logger.error(f"Failed to decode JSON from response: {e}")
+        return await response.json()  # Используем `await` для асинхронного парсинга
+    except:
+        error_logger.error("Failed to decode JSON from response: %s", response.text)
         return {}
+
+
+async def fetch(session, url):
+    async with session.get(url) as response:
+        return await response.json()
