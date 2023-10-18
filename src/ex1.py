@@ -327,7 +327,7 @@ async def process_batch_posts(url, full_list, total_likes_count, total_comments_
             if post.get('shortcode') in existing_shortcodes:
                 continue
 
-            processed_post = _process_post(post)
+            processed_post = await _process_post(post)
             full_list.append(processed_post)
 
             total_likes_count += processed_post.get('likes_count', 0)
