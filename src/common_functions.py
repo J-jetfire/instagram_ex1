@@ -2,6 +2,9 @@ import logging
 
 import aiohttp
 from asyncio import Lock
+
+from aiohttp import ClientResponse
+
 from src.custom_exceptions import ProfileIsPrivateException
 import requests
 from fastapi import HTTPException
@@ -38,57 +41,69 @@ async def check_and_raise_if_private(username: str):
 
 
 async def user_data_main(username: str) -> dict:
+    """
+    Получает основные данные о пользователе.
+
+    Args:
+        username (str): Имя пользователя.
+
+    Returns:
+        dict: Основные данные о пользователе.
+    """
     user_profile = await get_user_profile_info_by_username(username)
 
     if not user_profile.get('user_id'):
-        error_logger.error("Parameter 'user_id' is null. common_functions.py. 34 row.")
+        error_logger.error("Parameter 'user_id' is null. common_functions.py. 56 row.")
         return {}
 
     url = f"https://api.com/usercontact/{user_profile.get('user_id')}"
     response = await api_call(url)
-
     json_data = await safe_json(response)
 
-    if response.status != 200 or not json_data:
-        return {}
+    if response.status == 200 and json_data:
+        data = json_data.get('data', {}).get('user', {})
 
-    data = json_data.get('data', {}).get('user', {})
+        return {
+            'id': data.get('pk', ''),
+            'profile_link': f'https://instagram.com/{username}',
+            'username': username,
+            'full_name': data.get('full_name', ''),
+            'icon_url': data.get('profile_pic_url', ''),
+            'is_private': data.get('is_private', True),
+            'followers_count': data.get('follower_count', 0),
+            'followings_count': data.get('following_count', 0)
+        }
 
-    return {
-        'id': data.get('pk', ''),
-        'profile_link': f'https://instagram.com/{username}',
-        'username': username,
-        'full_name': data.get('full_name', ''),
-        'icon_url': data.get('profile_pic_url', ''),
-        'is_private': data.get('is_private', True),
-        'followers_count': data.get('follower_count', 0),
-        'followings_count': data.get('following_count', 0)
-    }
+    return {}
 
 
 async def get_user_profile_info_by_username(username: str) -> dict:
+    """
+    Получает данные о профиле пользователя по его имени пользователя.
+
+    Args:
+        username (str): Имя пользователя.
+
+    Returns:
+        dict: Данные о профиле пользователя.
+    """
     url = f"https://api.com/userinfo/{username}"
     response = await api_call(url)
 
     json_data = await safe_json(response)
 
-    if response.status != 200 or not json_data:
-        return {}
+    if response.status == 200 and json_data:
+        data = json_data.get('data', {})
+        user_id = data.get('id')
+        is_private = data.get('is_private', True)
 
-    data = json_data.get('data', {})
-    user_id = data.get('id', '')
-    is_private = data.get('is_private', True)
+        if user_id:
+            return {'user_id': user_id, 'is_private': is_private}
 
-    if not user_id:
-        return {}
-
-    return {
-        'user_id': user_id,
-        'is_private': is_private
-    }
+    return {}
 
 
-async def get_next_api_key():
+async def get_next_api_key() -> str:
     """
     INSTAGRAM_API_KEYS_LOCK используется для того, чтобы гарантировать,
     что операции с INSTAGRAM_API_KEYS (например, popleft и append)
@@ -104,7 +119,16 @@ async def get_next_api_key():
     return key
 
 
-async def api_call(url):
+async def api_call(url) -> ClientResponse | None:
+    """
+    Выполняет асинхронный API-запрос.
+
+    Args:
+        url (str): URL для запроса.
+
+    Returns:
+        aiohttp.ClientResponse: Ответ API.
+    """
     current_key = await get_next_api_key()
 
     headers = {
@@ -125,15 +149,15 @@ async def api_call(url):
         return None
 
 
-async def safe_json(response):
+async def safe_json(response) -> dict:
     """
-    Decode JSON from response safely.
+    Декодирует JSON из ответа с учетом возможных ошибок.
 
     Args:
-        response: The response object.
+        response (aiohttp.ClientResponse): Ответ API.
 
     Returns:
-        Parsed JSON data or an empty dictionary in case of failure.
+        dict: Распарсенный JSON или пустой словарь в случае ошибки.
     """
     try:
         return await response.json()  # Используем `await` для асинхронного парсинга
